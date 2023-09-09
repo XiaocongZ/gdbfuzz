@@ -23,7 +23,7 @@ import time
 from configparser import ConfigParser
 from typing import Any
 
-import networkx as nx
+
 from GDBFuzz.gdb.GDB import GDB
 from GDBFuzz.gdb.GDB_QEMU import GDB_QEMU
 from GDBFuzz.modes.SUTInstance import SUTInstance
@@ -34,15 +34,14 @@ class QEMUInstance(SUTInstance):
 
     def __init__(
         self,
-        config: ConfigParser,
-        cfg: nx.DiGraph
+        config: ConfigParser
     ) -> None:
         self.init_qemu(
             config['SUT']['binary_file_path'],
             config['Dependencies']['path_to_qemu'],
             config['LogsAndVisualizations']['output_directory']
         )
-        super().__init__(config, cfg)
+        super().__init__(config)
 
     def init_gdb(self, config: ConfigParser) -> GDB:
         gdb = GDB_QEMU(

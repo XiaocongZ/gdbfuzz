@@ -23,7 +23,6 @@ from configparser import ConfigParser
 from types import TracebackType
 from typing import Any
 
-import networkx as nx
 from GDBFuzz.connections.SUTConnection import SUTConnection
 from GDBFuzz.gdb.GDB import GDB
 
@@ -40,8 +39,7 @@ class SUTInstance:
 
     def __init__(
             self,
-            config: ConfigParser,
-            cfg: nx.DiGraph
+            config: ConfigParser
     ) -> None:
         # Maps GDB Breakpoint IDs (key) to addresses (value) where this
         # breakpoint is placed.
@@ -53,7 +51,7 @@ class SUTInstance:
         # correctly in the GDB response. With the ESP32 GDB server, for instance,
         # the real hit breakpoint is reported in a seperate message and the current PC
         # of the first CPU core is reported via the standard  GDB response.
-        # Therefore this queue is introduced as a workaround 
+        # Therefore this queue is introduced as a workaround
         self.aditional_hit_addresses: mp.Queue[int] = mp.Queue()
         self.gdb: GDB = self.init_gdb(config)
 
@@ -84,9 +82,9 @@ class SUTInstance:
 
     # Subclasses may override init_gdb
     def init_gdb(self, config: ConfigParser) -> GDB:
-        
-        retries = 3 
-        
+
+        retries = 3
+
         while retries > 0:
             try:
                 gdb = GDB(
@@ -111,7 +109,7 @@ class SUTInstance:
                 time.sleep(5)
                 if retries == 0:
                     raise e
-        
+
 
     # Subclasses may override init_SUT_connection
     def init_SUT_connection(self, config: ConfigParser) -> SUTConnection:
@@ -125,7 +123,7 @@ class SUTInstance:
         ret: list[int] = []
         while self.aditional_hit_addresses.qsize() > 0:
             ret.append(self.aditional_hit_addresses.get())
-        
+
         return ret
 
     def __enter__(self) -> SUTInstance:
@@ -141,7 +139,7 @@ class SUTInstance:
         to be deleted.
         Some of these may fail because the target system may have crashed.
         """
- 
+
         try:
             self.SUT_connection.disconnect()
         except Exception as e:
