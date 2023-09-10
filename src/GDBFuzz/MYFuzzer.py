@@ -27,12 +27,14 @@ from configparser import ConfigParser
 from typing import Any
 
 import attr
+import ast
 
 from GDBFuzz import graph
 from GDBFuzz import util
 
 from GDBFuzz.fuzz_wrappers.InputGeneration import CorpusEntry, InputGeneration
-from GDBFuzz.FuzzerStats import FuzzerStats
+###
+from GDBFuzz.MYFuzzerStats import FuzzerStats
 from GDBFuzz.gdb.GDB import GDB
 from GDBFuzz.ghidra.CFGUpdateCandidate import CFGUpdateCandidate
 from GDBFuzz.ghidra.Ghidra import Ghidra
@@ -63,34 +65,23 @@ class GDBFuzzer:
             config: ConfigParser,
             config_file_path: str
     ) -> None:
-        #self.entrypoint = config['SUT'].getint('entrypoint')
         self.max_breakpoints = config['SUT'].getint('max_breakpoints')
         self.output_directory = \
             config['LogsAndVisualizations']['output_directory']
 
-
-        '''
-        self.until_rotate_breakpoints = 20000
-        if 'until_rotate_breakpoints' in config['SUT']:
-            self.until_rotate_breakpoints = config['SUT'].getint(
-                'until_rotate_breakpoints'
-            )
-        '''
-        # Addresses of covered basic blocks
-        # Add entry point and all dummmy point
-        # TODO document dummy points
-        self.covered_nodes: set[int] = {self.entrypoint, -42, -1, -2}
-
         self.init_fuzzer_stats(config_file_path)
         self.init_components(config)
-
-        #self.fuzzer_stats_cfg_update()
+        self.init_memory_regions(config)
 
         self.crashes_directory = os.path.join(
             self.output_directory,
             'crashes'
         )
         os.mkdir(self.crashes_directory)
+
+    def init_memory_regions(self, config: ConfigParser) -> None:
+        self.memory_regions = ast.literal_eval(config['SUTMem']['memory_regions'])
+        self.stack_base_addr = int(config['SUTMem']['stack_base_addr'], 16)
 
     def init_fuzzer_stats(self, config_file_path: str) -> None:
         self.fuzzer_stats = FuzzerStats()
@@ -101,17 +92,6 @@ class GDBFuzzer:
         self.write_fuzzer_stats()
 
     def init_components(self, config: ConfigParser) -> None:
-        '''
-        self.ghidra = Ghidra(
-            config['SUT']['binary_file_path'],
-            config['SUT'].getboolean('start_ghidra'),
-            self.entrypoint,
-            config['SUT']['ignore_functions'].split(' '),
-            config['Dependencies']['path_to_ghidra'],
-            self.output_directory,
-            config['Dependencies'].getint('ghidra_port', 0)
-        )
-        '''
         #TODO visualization
         self.visualizations: Visualizations | None = None
         if config['LogsAndVisualizations'].getboolean('enable_UI'):
@@ -123,8 +103,6 @@ class GDBFuzzer:
             self.visualizations.daemon = True
             self.visualizations.start()
 
-        #self.bp_strategy = self.init_BPS(config)
-
         seeds_directory: str | None = config['Fuzzer']['seeds_directory']
         if seeds_directory == '':
             seeds_directory = None
@@ -133,6 +111,7 @@ class GDBFuzzer:
             seeds_directory,
             config['Fuzzer'].getint('maximum_input_length')
         )
+
     #TODO
     def init_SUT(self, config: ConfigParser) -> SUTInstance:
         if config['SUT']['target_mode'] == 'Hardware':
@@ -250,50 +229,6 @@ class GDBFuzzer:
                 return []
 
         return []
-
-    def report_address_reached(
-            self,
-            current_input: bytes,
-            address: int
-    ) -> None:
-        if address in self.covered_nodes:
-            return
-
-        if address not in self.ghidra.CFG():
-            log.warn(f'Reached node that is not in CFG: {hex(address)}')
-            return
-
-        self.covered_nodes.add(address)
-        self.fuzzer_stats.coverage += 1
-
-        self.write_coverage_data(address)
-
-        if self.bp_strategy.coverage_guided():
-            self.input_gen.report_address_reached(current_input, address,int(time.time()) - self.fuzzer_stats.start_time_epoch)
-
-        self.ghidra.report_address_reached(current_input, address)
-        self.bp_strategy.report_address_reached(
-            current_input,
-            address
-        )
-
-        if self.visualizations:
-            self.visualizations.new_coverage()
-
-
-        # Update coverage for dominating parent node.
-        # The dominator of the entry point is the entry point itself,
-        # so recursion is feasible and ends at the entry point at latest.
-        if self.bp_strategy.mark_dominated_nodes():
-            try:
-
-                for dominating_parent in self.dominator_graph.predecessors(address):
-                    self.report_address_reached(
-                        current_input,
-                        dominating_parent
-                    )
-            except nx.NetworkXError as e:
-                log.info(f"Node {hex(address)} is not in the dominator graph!")
 
     def on_crash(
             self,
@@ -414,87 +349,6 @@ class GDBFuzzer:
         sut.SUT_connection.send_input(SUT_input)
 
         return SUT_input, inputs_until_breakpoints_rotating
-
-    def on_breakpoint_hit(
-            self,
-            bp_id: str,
-            current_input: bytes,
-            baseline_input: bytes,
-            gdb: GDB,
-            breakpoints: dict[str, int]
-    ) -> None:
-        bp_address = breakpoints[bp_id]
-        log.info(f'Breakpoint at {hex(bp_address)} hit.')
-        self.fuzzer_stats.breakpoint_interruptions += 1
-
-        covered_before = len(self.covered_nodes)
-        self.report_address_reached(current_input, bp_address)
-
-        if self.visualizations:
-            self.visualizations.draw_CFG(
-                self.entrypoint,
-                self.ghidra.CFG(),
-                self.covered_nodes
-            )
-        log.info(
-            f'Reached {len(self.covered_nodes) - covered_before}  '
-            f'node(s) with a single breakpoint interruption'
-        )
-
-        # Relocate breakpoint
-        gdb.remove_breakpoint(bp_id)
-        del breakpoints[bp_id]
-        self.set_breakpoints(gdb, breakpoints, baseline_input)
-
-    # Set up to --max_breakpoints breakpoints.
-    def set_breakpoints(
-            self,
-            gdb: GDB,
-            breakpoints: dict[str, int],
-            current_baseline_input: bytes
-    ) -> None:
-        while len(breakpoints) < self.max_breakpoints:
-            bp_address = self.bp_strategy.get_breakpoint_address(
-                self.covered_nodes,
-                set(breakpoints.values()),
-                current_baseline_input
-            )
-            if bp_address is None:
-                break
-            bp_id = gdb.set_breakpoint(bp_address)
-            breakpoints[bp_id] = bp_address
-
-        if self.visualizations:
-            self.visualizations.breakpoints_changed(set(breakpoints.values()))
-
-    def rotate_breakpoints(
-            self,
-            gdb: GDB,
-            breakpoints: dict[str, int],
-            baseline_input: bytes
-    ) -> None:
-        gdb.interrupt()
-        stop_reason, stop_info = gdb.wait_for_stop(timeout=30)
-        # The crashed response can result from using gdb-multiarch
-        if stop_reason not in ['interrupt', 'crashed']:
-            raise SUTException(
-                'Expected interrupt stop reason, '
-                f'got {stop_reason=} {stop_info=}'
-            )
-        for bp_id in list(breakpoints.keys()):
-            gdb.remove_breakpoint(bp_id)
-            # This works because currently bps are set
-            # semi-randomly
-        breakpoints.clear()
-
-        self.set_breakpoints(gdb, breakpoints, baseline_input)
-        gdb.continue_execution()
-
-        # Target system does not inform GDBFuzz when it actually continues
-        # its execution. Wait 1 second for target system to continue, to send
-        # input when target system runs.
-
-        time.sleep(1)
 
     def write_fuzzer_stats(self) -> None:
         self.last_stat_update = int(

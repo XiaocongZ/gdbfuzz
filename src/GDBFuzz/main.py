@@ -26,7 +26,7 @@ from configparser import ConfigParser
 from hashlib import new
 
 import GDBFuzz.binary_operations.BinaryOperations as BinaryOps
-from GDBFuzz.GDBFuzzer import GDBFuzzer
+from GDBFuzz.MYFuzzer import GDBFuzzer
 
 
 def uniquify(path):
