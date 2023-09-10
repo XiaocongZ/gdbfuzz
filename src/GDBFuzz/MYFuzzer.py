@@ -28,6 +28,7 @@ from typing import Any
 
 import attr
 import ast
+import hashlib
 
 from GDBFuzz import graph
 from GDBFuzz import util
@@ -161,10 +162,10 @@ class GDBFuzzer:
             stop_reason, stop_info = sut.gdb.wait_for_stop(
                 timeout=single_run_timeout
             )
+            log.info(f"stop reason: {stop_reason}")
 
             if stop_reason == 'input request':
-                current_input, \
-                    inputs_until_breakpoints_rotating \
+                current_input \
                     = self.on_input_request(
                         inputs_until_breakpoints_rotating,
                         sut
@@ -333,22 +334,24 @@ class GDBFuzzer:
         """
         This function can update the baseline_input.
         """
-        inputs_until_breakpoints_rotating -= 1
-        if inputs_until_breakpoints_rotating <= 0:
-            inputs_until_breakpoints_rotating = self.until_rotate_breakpoints
-            log.info(f"Redistribute all {self.max_breakpoints} breakpoints")
-            self.input_gen.choose_new_baseline_input()
-            self.rotate_breakpoints(sut.gdb, sut.breakpoints, self.input_gen.get_baseline_input())
+        self.input_gen.choose_new_baseline_input()
 
         self.fuzzer_stats.runs += 1
         if int(time.time()) > (self.last_stat_update + 60):
             # Update fuzzer stats every minute
             self.write_fuzzer_stats()
 
+        #probing memory regions
+        #print("start probe")
+        #sut.gdb.interrupt()
+        #time.sleep(1)
+        #self.probe(sut.gdb)
+        #sut.gdb.continue_execution()
+        #print("finish probe")
         SUT_input = self.input_gen.generate_input()
         sut.SUT_connection.send_input(SUT_input)
 
-        return SUT_input, inputs_until_breakpoints_rotating
+        return SUT_input
 
     def write_fuzzer_stats(self) -> None:
         self.last_stat_update = int(
@@ -383,3 +386,16 @@ class GDBFuzzer:
         )
         with open(stats_file_path, 'a') as f:
             f.write(f'{runtime} {hex(address)}\n')
+
+    def probe(self, gdb: GDB) -> None:
+        #msp_num = gdb.register_name_to_number("$msp")
+        #print("msp_num", msp_num)
+        sp = gdb.read_register(13)
+        print("sp", sp)
+        mem = gdb.read_memory(self.memory_regions[0][1], self.memory_regions[0][2])
+        print("mem", mem)
+
+    def compute_hash(data: bytes) -> str:
+        h = hashlib.md5()
+        h.update(data)
+        return h.hexdigest()

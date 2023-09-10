@@ -105,6 +105,7 @@ class GDB():
                 return response
             # Skip responses that are from previous sync requests that timed
             # out, check next response.
+            log.error('GDB A previous req flushed', response)
 
     def wait_for_stop(self, timeout: float = 360000) -> tuple[str, Any]:
         """Wait for the SUT to stop, returns why the SUT stopped.
@@ -272,7 +273,7 @@ class GDBCommunicator(mp.Process):
                     self.on_stop_response(response)
 
     def on_exit(self, signum: Any, frame: Any) -> None:
-        self.running = False 
+        self.running = False
         self.gdbmi.exit()
         process = self.gdbmi.gdb_process
         if process:
@@ -391,4 +392,3 @@ class GDBCommunicator(mp.Process):
                     # multiple stop responses for a single interruption
                     self.aditional_hit_addresses.put(int(key_val[1], 16))
                     log.debug(f"PC at {key_val[1]}")
-
