@@ -162,6 +162,7 @@ class GDBFuzzer:
             stop_reason, stop_info = sut.gdb.wait_for_stop(
                 timeout=single_run_timeout
             )
+
             log.info(f"stop reason: {stop_reason}")
 
             if stop_reason == 'input request':
@@ -342,12 +343,14 @@ class GDBFuzzer:
             self.write_fuzzer_stats()
 
         #probing memory regions
-        #print("start probe")
-        #sut.gdb.interrupt()
-        #time.sleep(1)
-        #self.probe(sut.gdb)
-        #sut.gdb.continue_execution()
-        #print("finish probe")
+        log.info("start probe")
+        sut.gdb.interrupt()
+        time.sleep(0.6)
+        self.probe(sut.gdb)
+        #sut.gdb.send('-exec-interrupt --all SIGCONT')
+        sut.gdb.continue_execution()
+        log.info("finish probe")
+
         SUT_input = self.input_gen.generate_input()
         sut.SUT_connection.send_input(SUT_input)
 
@@ -393,7 +396,9 @@ class GDBFuzzer:
         sp = gdb.read_register(13)
         print("sp", sp)
         mem = gdb.read_memory(self.memory_regions[0][1], self.memory_regions[0][2])
-        print("mem", mem)
+        print(self.memory_regions[0][0], mem)
+        mem = gdb.read_memory(self.memory_regions[1][1], self.memory_regions[1][2])
+        print(self.memory_regions[1][0], mem)
 
     def compute_hash(data: bytes) -> str:
         h = hashlib.md5()

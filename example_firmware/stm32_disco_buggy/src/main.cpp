@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "Arduino.h"
+#include <signal.h>
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 13
@@ -24,7 +25,7 @@
 char *buf = 0;
 size_t input_len = 0;
 int led_state = 0;
-
+int count = 0;
 
 #define FUZZ_INPUT_SIZE 2048
 
@@ -55,13 +56,17 @@ void serial_read_bytes(char *buf, size_t length) {
 void process_data(char* buffer, unsigned int length) {
 	char stack_array[20];
 
-	if( length > 0 && buffer[0] == 'b') 
-		if( length > 1 && buffer[1] == 'u') 
-			if( length > 2 && buffer[2] == 'g') 
-				if( length > 3 && buffer[3] == '!') {
-					memcpy(stack_array, buffer, length);
-                    Serial.write(stack_array[3]);
-				}
+	if( length > 0 && buffer[0] == 'b')
+		if( length > 1 && buffer[1] == 'u')
+			if( length > 2 && buffer[2] == 'g')
+				if( length > 3 && buffer[3] == '!')
+                    if( length > 4 && buffer[4] == '1')
+                        if( length > 5 && buffer[5] == '2')
+                            if( length > 6 && buffer[6] == '3')
+                                if( length > 7 && buffer[7] == '4'){
+                					memcpy(stack_array, buffer, length);
+                                    Serial.write(stack_array[3]);
+                				}
 }
 
 void loop() {

@@ -216,7 +216,7 @@ class GDBFuzzer:
             stop_reason, stop_info = sut.gdb.wait_for_stop(
                 timeout=single_run_timeout
             )
-
+            log.info(f"stop reason: {stop_reason}")
             if stop_reason == 'input request':
                 current_input, \
                     inputs_until_breakpoints_rotating \
@@ -256,7 +256,7 @@ class GDBFuzzer:
                                 sut.gdb,
                                 sut.breakpoints
                             )
-                    
+
                     hit_bb = self.ghidra.basic_block_at_address(stop_info)
                     bb_id_list = [key for key, value in sut.breakpoints.items() if value == hit_bb]
                     if bb_id_list:
@@ -271,7 +271,7 @@ class GDBFuzzer:
                         not bb_id_list:
                             log.warning(f"Hit non targeted BP. Exception? {stop_reason=} {stop_info=}")
                             self.on_crash(current_input, sut.gdb)
-                            
+
                 except Exception as e :
                     log.warning(f"Exception: {e}")
 
@@ -323,7 +323,7 @@ class GDBFuzzer:
 
         if self.bp_strategy.coverage_guided():
             self.input_gen.report_address_reached(current_input, address,int(time.time()) - self.fuzzer_stats.start_time_epoch)
-        
+
         self.ghidra.report_address_reached(current_input, address)
         self.bp_strategy.report_address_reached(
             current_input,
@@ -376,12 +376,12 @@ class GDBFuzzer:
         stacktrace = ''
         for frame in response['payload']['stack']:
             stacktrace += ' ' + frame['addr']
-        
+
         # Limit to 100
         if len(stacktrace) > 100:
             stacktrace = stacktrace[0:100]
-        
-        # Make string os file name friendly 
+
+        # Make string os file name friendly
         stacktrace = "".join([c for c in stacktrace if re.match(r'\w', c)])
         #hashed_stacktrace = hashlib.sha1()
         #hashed_stacktrace.update(stacktrace)
@@ -428,10 +428,10 @@ class GDBFuzzer:
         # Limit to 100
         if len(stacktrace) > 100:
             stacktrace = stacktrace[0:100]
-        
-        # Make string os file name friendly 
+
+        # Make string os file name friendly
         stacktrace = "".join([c for c in stacktrace if re.match(r'\w', c)])
-            
+
         filepath = os.path.join(
             self.crashes_directory,
             'timeout_' + stacktrace
@@ -549,7 +549,7 @@ class GDBFuzzer:
 
         time.sleep(1)
 
-    
+
     def run_update_cfg(
             self,
             cfg_update_candidates: list[CFGUpdateCandidate],
@@ -627,7 +627,7 @@ class GDBFuzzer:
         # Print corpus statistics
         if hasattr(self, 'input_gen'):
             self.fuzzer_stats.corpus_state = list(map(CorpusEntry.__str__, self.input_gen.corpus))
-        
+
         with open(stats_file_path, 'w') as f:
             f.write(json.dumps(
                 attr.asdict(self.fuzzer_stats),

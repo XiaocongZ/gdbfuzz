@@ -42,6 +42,7 @@ class GDB():
             gdb_path: str,
             gdb_server_address: str,
     ) -> None:
+        #After send interrupt, expect an async notify response aside from instant return.
         # message_id associates GDB requests with GDB responses.
         self.message_id: int = 0
         # GDBCommunicator interacts with GDB Client, and runs in a
@@ -102,6 +103,8 @@ class GDB():
                     f'timeout: {timeout} seconds.'
                 )
             if response['token'] == message_id:
+                #log.info(message)
+                #log.info(response)
                 return response
             # Skip responses that are from previous sync requests that timed
             # out, check next response.
@@ -148,9 +151,21 @@ class GDB():
                 )
                 time.sleep(0.5)
                 self.continue_execution(retries - 1)
+        else:
+            pass
+            #todo add notification for running
+            #stop_reason, stop_info = self.wait_for_stop()
+            #log.info(stop_reason)
 
+
+    #wait till receive notification
     def interrupt(self) -> None:
         self.send('-exec-interrupt --all')
+        stop_reason, stop_info = self.wait_for_stop()
+        if stop_reason == 'interrupted':
+            return
+        else:
+            log.error(stop_info)
 
     def set_breakpoint(self, address: int, is_hardware_bp: bool = True) -> str:
         """Returns the ID that GDB gave to the breakpoint."""
@@ -262,7 +277,7 @@ class GDBCommunicator(mp.Process):
             # information from them, and pass the back to the GDB Python class
             # instance via one of the queues.
             for response in responses:
-                log.debug(f'received: {response}')
+                log.info(f'received: {response}')
                 if 'token' in response and response['token'] is not None:
                     response['console_data'] = self.console_messages
                     self.console_messages = []
@@ -329,6 +344,20 @@ class GDBCommunicator(mp.Process):
             self.stop_responses.put(
                 ('communication error', response['payload'])
             )
+        #add this branch because we want to interrupt execution and probe memory
+        elif (
+                response['type'] == 'notify' and
+                response['message'] == 'stopped' and
+                isinstance(response['payload'], dict) and
+                'signal-meaning' in response['payload'] and
+                response['payload']['signal-meaning'] == 'Trace/breakpoint trap'
+        ):
+            log.info('received notify for interrupt')
+            log.info(response)
+            self.stop_responses.put(
+                ('interrupted', str(response['payload']))
+            )
+
         elif (
                 response['type'] == 'notify' and
                 response['message'] == 'stopped' and
@@ -336,9 +365,8 @@ class GDBCommunicator(mp.Process):
                 'signal-meaning' in response['payload'] and
                 (
                     response['payload']['signal-meaning'] in
-                    ['Interrupt', 'Trace/breakpoint trap', 'Signal 0']
+                    ['Interrupt', 'Signal 0']
                 )
-
         ):
             # With QEMU, 'signal-meaning' is 'Interrupt', on stlink it is
             # 'trace/breakpoint trap'.
@@ -350,6 +378,7 @@ class GDBCommunicator(mp.Process):
                 self.stop_responses.put(
                     ('crashed', str(response['payload']))
                 )
+
             else:
                 # Either a watchpoint is hit or the target system
                 # was interrupted. In both cases, the response looks the same.
