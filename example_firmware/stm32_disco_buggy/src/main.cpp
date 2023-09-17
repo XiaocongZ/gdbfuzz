@@ -23,6 +23,7 @@
 
 
 char *buf = 0;
+char buf_same_prefix[10];
 size_t input_len = 0;
 int led_state = 0;
 int count = 0;
@@ -55,7 +56,16 @@ void serial_read_bytes(char *buf, size_t length) {
 
 void process_data(char* buffer, unsigned int length) {
 	char stack_array[20];
-
+    char match_string[] = "bug!1234";
+    for (int i = 0; i < 8; i++){
+        if (length > i && buffer[i] == match_string[i]){
+            buf_same_prefix[i] = buffer[i];
+        }
+        else{
+            buf_same_prefix[i] = 0;
+        }
+    }
+    /*
 	if( length > 0 && buffer[0] == 'b')
 		if( length > 1 && buffer[1] == 'u')
 			if( length > 2 && buffer[2] == 'g')
@@ -67,6 +77,7 @@ void process_data(char* buffer, unsigned int length) {
                 					memcpy(stack_array, buffer, length);
                                     Serial.write(stack_array[3]);
                 				}
+    */
 }
 
 void loop() {
