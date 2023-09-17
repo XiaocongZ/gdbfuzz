@@ -88,6 +88,8 @@ class GDB():
         message_id = self.generate_message_id()
         message = str(message_id) + message
         self.requests.put(message)
+        log.info(message, stack_info=True)
+
         timeout_time = time.time() + timeout
         while True:
             timeout_seconds_left = timeout_time - time.time()
@@ -164,7 +166,7 @@ class GDB():
         self.send('-exec-interrupt --all')
         time.sleep(0.5)
         stop_reason, stop_info = self.wait_for_stop()
-        if stop_reason == 'interrupted':    
+        if stop_reason == 'interrupted':
             return
         else:
             log.error(stop_info)
@@ -208,11 +210,12 @@ class GDB():
             raise Exception(str(response))
         return int(response['payload']['register-values'][0]['value'], 16)
 
-    def read_memory(self, address: int, size: int) -> int:
+    def read_memory(self, address: int, size: int) -> str:
         response = self.send(f'-data-read-memory-bytes {address} {size}')
         if 'memory' not in response['payload']:
+            log.error(response)
             raise Exception(f'GDB memory request failed {response=}')
-        return int(response['payload']['memory'][0]['contents'], 16)
+        return response['payload']['memory'][0]['contents']
 
     def register_name_to_number(self) -> dict[str, int]:
         ret = {}

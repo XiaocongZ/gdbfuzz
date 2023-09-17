@@ -37,8 +37,6 @@ from GDBFuzz.fuzz_wrappers.InputGeneration import CorpusEntry, InputGeneration
 ###
 from GDBFuzz.MYFuzzerStats import FuzzerStats
 from GDBFuzz.gdb.GDB import GDB
-from GDBFuzz.ghidra.CFGUpdateCandidate import CFGUpdateCandidate
-from GDBFuzz.ghidra.Ghidra import Ghidra
 from GDBFuzz.modes.QEMUInstance import QEMUInstance
 from GDBFuzz.modes.SUTInstance import SUTInstance
 from GDBFuzz.modes.SUTRunsOnHostInstance import SUTRunsOnHostInstance
@@ -48,12 +46,8 @@ from GDBFuzz.visualization.Visualizations import Visualizations
 
 class GDBFuzzer:
 
-    CFG_UPDATE_INTERVAL = 60 * 15  # quarter hour updates
-
-    # Seems like once ghidra times out it never comes back
-    MAX_GHIDRA_TIMEOUTS = 1
-
     def __init__(self, config: ConfigParser, config_file_path: str) -> None:
+
         self.before_fuzzing(config, config_file_path)
 
         self.run(config)
@@ -73,6 +67,8 @@ class GDBFuzzer:
         self.init_fuzzer_stats(config_file_path)
         self.init_components(config)
         self.init_memory_regions(config)
+        self.hash_record = dict()
+
 
         self.crashes_directory = os.path.join(
             self.output_directory,
@@ -151,8 +147,8 @@ class GDBFuzzer:
             single_run_timeout: int,
             stop_time: int
     ):
-        inputs_until_breakpoints_rotating = 0 # reset directly
-        current_input: bytes = b''
+        current_input: bytes = b'hi'
+        self.input_gen.current_input = current_input
 
         stop_reason, stop_info = None, None
         while stop_time >= int(time.time()):
@@ -168,56 +164,17 @@ class GDBFuzzer:
             if stop_reason == 'input request':
                 current_input \
                     = self.on_input_request(
-                        inputs_until_breakpoints_rotating,
                         sut
                     )
 
             elif stop_reason == 'breakpoint hit':
-                inputs_until_breakpoints_rotating = \
-                    self.until_rotate_breakpoints
-                # stop_info contains the breakpoint id
-                self.on_breakpoint_hit(
-                    stop_info,
-                    current_input,
-                    self.input_gen.get_baseline_input(),
-                    sut.gdb,
-                    sut.breakpoints
-                )
-                #baseline_input = self.input_gen.choose_new_baseline_input()
+                log.error("unimplemented")
+                raise SystemExit(1)
+
             elif stop_reason == 'interrupt':
                 # In this case, this is a sw breakpoint hit.
-                try:
-                    additional_bb_id_list = []
-                    for bb in sut.get_additional_hit_bbs():
-                        #Check whether we hit a targeted breakpoint
-                        bb_id_list = [key for key, value in sut.breakpoints.items() if value == bb]
-                        if bb_id_list:
-                            additional_bb_id_list.append(bb_id_list[0])
-                            self.on_breakpoint_hit(
-                                bb_id_list[0],
-                                current_input,
-                                self.input_gen.get_baseline_input(),
-                                sut.gdb,
-                                sut.breakpoints
-                            )
-
-                    hit_bb = self.ghidra.basic_block_at_address(stop_info)
-                    bb_id_list = [key for key, value in sut.breakpoints.items() if value == hit_bb]
-                    if bb_id_list:
-                        self.on_breakpoint_hit(
-                                bb_id_list[0],
-                                current_input,
-                                self.input_gen.get_baseline_input(),
-                                sut.gdb,
-                                sut.breakpoints
-                        )
-                    if not additional_bb_id_list and \
-                        not bb_id_list:
-                            log.warning(f"Hit non targeted BP. Exception? {stop_reason=} {stop_info=}")
-                            self.on_crash(current_input, sut.gdb)
-
-                except Exception as e :
-                    log.warning(f"Exception: {e}")
+                log.error("unimplemented")
+                raise SystemExit(1)
 
             elif stop_reason == 'timed out':
                 self.on_timeout(current_input, sut.gdb)
@@ -329,12 +286,12 @@ class GDBFuzzer:
 
     def on_input_request(
             self,
-            inputs_until_breakpoints_rotating: int,
             sut: SUTInstance
     ) -> tuple[bytes, bytes, int]:
         """
         This function can update the baseline_input.
         """
+        #todo when to choose new baseline?
         self.input_gen.choose_new_baseline_input()
 
         self.fuzzer_stats.runs += 1
@@ -346,7 +303,6 @@ class GDBFuzzer:
         sut.gdb.interrupt()
         self.probe(sut.gdb)
         sut.gdb.continue_execution()
-
         SUT_input = self.input_gen.generate_input()
         sut.SUT_connection.send_input(SUT_input)
 
@@ -386,17 +342,36 @@ class GDBFuzzer:
         with open(stats_file_path, 'a') as f:
             f.write(f'{runtime} {hex(address)}\n')
 
-    def probe(self, gdb: GDB) -> None:
+    def probe(self, gdb: GDB) -> str:
         #msp_num = gdb.register_name_to_number("$msp")
         #print("msp_num", msp_num)
-        sp = gdb.read_register(13)
-        print("sp", sp)
-        mem = gdb.read_memory(self.memory_regions[0][1], self.memory_regions[0][2])
-        print(self.memory_regions[0][0], mem)
-        mem = gdb.read_memory(self.memory_regions[1][1], self.memory_regions[1][2])
-        print(self.memory_regions[1][0], mem)
 
-    def compute_hash(data: bytes) -> str:
+        sp = gdb.read_register(13)
+        stack_mem = gdb.read_memory(sp, self.stack_base_addr - sp)
+
+        mem = ''
+
+        for region in self.memory_regions:
+            section_mem = gdb.read_memory(region[1], region[2])
+            mem += section_mem
+            time.sleep(0.5)
+
+        mem = mem + stack_mem
+        log.info(mem)
+        hash = self.compute_hash(bytes.fromhex(mem))
+        log.info(hash)
+        #hashing and recording
+        current_input = self.input_gen.get_current_input()
+        log.info(current_input)
+        if not hash in self.hash_record:
+            self.hash_record[hash] = None
+            self.input_gen.add_corpus_entry(current_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
+            log.info("new hash")
+        else:
+            log.info("repeated hash")
+        return hash
+
+    def compute_hash(self, data: bytes) -> str:
         h = hashlib.md5()
         h.update(data)
         return h.hexdigest()
