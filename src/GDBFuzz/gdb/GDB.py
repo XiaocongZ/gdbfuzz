@@ -153,6 +153,7 @@ class GDB():
                 self.continue_execution(retries - 1)
         else:
             pass
+            time.sleep(0.5)
             #todo add notification for running
             #stop_reason, stop_info = self.wait_for_stop()
             #log.info(stop_reason)
@@ -161,8 +162,9 @@ class GDB():
     #wait till receive notification
     def interrupt(self) -> None:
         self.send('-exec-interrupt --all')
+        time.sleep(0.5)
         stop_reason, stop_info = self.wait_for_stop()
-        if stop_reason == 'interrupted':
+        if stop_reason == 'interrupted':    
             return
         else:
             log.error(stop_info)

@@ -343,13 +343,9 @@ class GDBFuzzer:
             self.write_fuzzer_stats()
 
         #probing memory regions
-        log.info("start probe")
         sut.gdb.interrupt()
-        time.sleep(0.6)
         self.probe(sut.gdb)
-        #sut.gdb.send('-exec-interrupt --all SIGCONT')
         sut.gdb.continue_execution()
-        log.info("finish probe")
 
         SUT_input = self.input_gen.generate_input()
         sut.SUT_connection.send_input(SUT_input)
