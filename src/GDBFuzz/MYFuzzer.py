@@ -147,9 +147,6 @@ class GDBFuzzer:
             single_run_timeout: int,
             stop_time: int
     ):
-        current_input: bytes = b'hi'
-        self.input_gen.current_input = current_input
-
         stop_reason, stop_info = None, None
         while stop_time >= int(time.time()):
             if stop_reason != 'input request':
@@ -182,6 +179,8 @@ class GDBFuzzer:
             elif stop_reason == 'crashed' or stop_reason == 'exited':
                 self.on_crash(current_input, sut.gdb)
                 return []
+            elif stop_reason == 'notify_running':
+                log.info('notify_running')
             else:
                 log.error(f'Unexpected {stop_reason=} {stop_info=}')
                 self.on_crash(current_input, sut.gdb)
@@ -255,7 +254,7 @@ class GDBFuzzer:
             gdb.interrupt()
             # We dont get acknowledge when target system is stopped, so
             # wait for 1 second for target system to stop.
-            time.sleep(1)
+            #time.sleep(1)
 
             response = gdb.send('-stack-list-frames')
             for frame in response['payload']['stack']:
@@ -291,8 +290,6 @@ class GDBFuzzer:
         """
         This function can update the baseline_input.
         """
-        #todo when to choose new baseline?
-        self.input_gen.choose_new_baseline_input()
 
         self.fuzzer_stats.runs += 1
         if int(time.time()) > (self.last_stat_update + 60):
@@ -304,6 +301,7 @@ class GDBFuzzer:
         self.probe(sut.gdb)
         sut.gdb.continue_execution()
         SUT_input = self.input_gen.generate_input()
+        log.info(SUT_input)
         sut.SUT_connection.send_input(SUT_input)
 
         return SUT_input
@@ -346,26 +344,29 @@ class GDBFuzzer:
         #msp_num = gdb.register_name_to_number("$msp")
         #print("msp_num", msp_num)
 
-        sp = gdb.read_register(13)
-        stack_mem = gdb.read_memory(sp, self.stack_base_addr - sp)
+        #sp = gdb.read_register(13)
+        #stack_mem = gdb.read_memory(sp, self.stack_base_addr - sp)
 
+        regions_to_probe = ['buf_same_prefix']
         mem = ''
-
         for region in self.memory_regions:
-            section_mem = gdb.read_memory(region[1], region[2])
-            mem += section_mem
-            time.sleep(0.5)
+            if region[0] in regions_to_probe:
+                region_mem = gdb.read_memory(region[1], region[2])
+                mem += region_mem
+                #time.sleep(0.2)
 
-        mem = mem + stack_mem
+        #mem = mem + stack_mem
         log.info(mem)
         hash = self.compute_hash(bytes.fromhex(mem))
         log.info(hash)
         #hashing and recording
-        current_input = self.input_gen.get_current_input()
-        log.info(current_input)
+        previous_loop_input = self.input_gen.get_current_input()
+        if previous_loop_input == None:
+            return ''
+        log.info(previous_loop_input)
         if not hash in self.hash_record:
             self.hash_record[hash] = None
-            self.input_gen.add_corpus_entry(current_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
+            self.input_gen.add_corpus_entry(previous_loop_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
             log.info("new hash")
         else:
             log.info("repeated hash")

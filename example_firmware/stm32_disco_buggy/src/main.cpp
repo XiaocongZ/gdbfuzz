@@ -57,11 +57,13 @@ void serial_read_bytes(char *buf, size_t length) {
 void process_data(char* buffer, unsigned int length) {
 	char stack_array[20];
     char match_string[] = "bug!1234";
+    bool match = true;
     for (int i = 0; i < 8; i++){
-        if (length > i && buffer[i] == match_string[i]){
+        if (match == true && length > i && buffer[i] == match_string[i]){
             buf_same_prefix[i] = buffer[i];
         }
         else{
+            match = false;
             buf_same_prefix[i] = 0;
         }
     }
@@ -97,7 +99,7 @@ void loop() {
 
     if (response_length > FUZZ_INPUT_SIZE)
     {
-        //Serial.println("ERROR: Received input with length > 1048");
+        Serial.println("ERROR: Received input with length > 2048");
         while(1){ delay(100); }
     }
     //socket_read_bytes(connection_fd, (void *)buf, response_length);

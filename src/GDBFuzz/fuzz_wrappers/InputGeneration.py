@@ -113,6 +113,9 @@ class InputGeneration:
         # Setup stared libfuzzer object.
         _pylibfuzzer.initialize(max_input_length)
 
+        self.current_input = None
+        self.choose_new_baseline_input()
+
     def add_seeds(self, seeds_directory: str) -> None:
         """Add each seed in seeds_directory to the corpus.
 
@@ -157,7 +160,7 @@ class InputGeneration:
         return entry
 
     def choose_new_baseline_input(self):
-
+        self.inputs_to_switch_baseline = 50
         energy_sum = 0
         cum_energy = []
         for i in self.corpus:
@@ -180,6 +183,12 @@ class InputGeneration:
         return self.current_input
 
     def generate_input(self) -> bytes:
+        #for now, switch baseline after 50 inputs
+        self.inputs_to_switch_baseline -= 1
+        if self.inputs_to_switch_baseline == 0:
+            log.info('choose_new_baseline_input')
+            self.choose_new_baseline_input()
+
         generated_inp = _pylibfuzzer.mutate(self.corpus[self.current_base_input_index].content)
         self.current_input = generated_inp
         return generated_inp

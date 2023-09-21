@@ -28,10 +28,11 @@ class SerialConnection(ConnectionBaseClass):
     def connect(self, SUTConnection_config: configparser.SectionProxy) -> None:
         self.serial = serial.Serial(
             SUTConnection_config['port'],
-            SUTConnection_config.getint('baud_rate',), 
-            #xonxoff=0, 
+            SUTConnection_config.getint('baud_rate',),
+            #xonxoff=0,
             #rtscts=0
         )
+
         self.serial.reset_input_buffer()
         # Do a reset, so that the SUT requests an input now
         self.reset_sut()
@@ -40,10 +41,15 @@ class SerialConnection(ConnectionBaseClass):
 
     def wait_for_input_request(self) -> None:
         # SUT sends 'A' whenever it requests and input
+        log_blank = True
         read = ''
         while not read or read[-1] != 65:
             read = self.serial.read_all()
-        log.debug(f'READ: {read}')
+            if log_blank == True or read:
+                log.debug(f'READ For Match: {read}')
+            if not read:
+                log_blank = False
+        log.debug(f'READ With Match: {read}')
 
     def send_input(self, fuzz_input: bytes) -> None:
         # First send length
@@ -53,7 +59,7 @@ class SerialConnection(ConnectionBaseClass):
 
         # After that input
         self.serial.write(fuzz_input)
-        
+
         self.serial.flush()
 
     def disconnect(self) -> None:

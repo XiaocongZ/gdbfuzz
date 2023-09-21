@@ -80,7 +80,7 @@ class GDB():
                 time.sleep(5)
                 raise Exception(f'gdb_manger process exited with {exitcode=}.')
 
-    def send(self, message: str, timeout: int = 10) -> dict[str, Any]:
+    def send(self, message: str, timeout: int = 10, wait_notification = False) -> dict[str, Any]:
         """Send a request to the GDB process, wait and return the response.
         Raise TimeoutError if no response was received within 'timeout'
         seconds.
@@ -88,9 +88,10 @@ class GDB():
         message_id = self.generate_message_id()
         message = str(message_id) + message
         self.requests.put(message)
-        log.info(message, stack_info=True)
+        log.debug(message)
 
         timeout_time = time.time() + timeout
+        response = None
         while True:
             timeout_seconds_left = timeout_time - time.time()
             try:
@@ -105,12 +106,36 @@ class GDB():
                     f'timeout: {timeout} seconds.'
                 )
             if response['token'] == message_id:
-                #log.info(message)
-                #log.info(response)
+                if wait_notification == False:
+                    log.debug(f'wait_notification = False: {response}')
+                    return response
+                else:
+                    break
+            else:
+                # Skip responses that are from previous sync requests that timed
+                # out, check next response.
+                log.error('GDB A previous req flushed', response)
+
+        # get notify message
+        while True:
+            timeout_seconds_left = timeout_time - time.time()
+            try:
+                # Raises queue.Empty if .get() times out.
+                notification = self.request_responses.get(
+                    block=True,
+                    timeout=timeout_seconds_left
+                )
+            except queue.Empty:
+                raise TimeoutError(
+                    f'No response was received for request "{message}" within'
+                    f'timeout: {timeout} seconds.'
+                )
+            if notification['type'] == 'notify':
+                log.debug(f'wait for notification: {notification}')
                 return response
-            # Skip responses that are from previous sync requests that timed
-            # out, check next response.
-            log.error('GDB A previous req flushed', response)
+            else:
+                log.error(f'wait for notification: {notification}')
+
 
     def wait_for_stop(self, timeout: float = 360000) -> tuple[str, Any]:
         """Wait for the SUT to stop, returns why the SUT stopped.
@@ -122,6 +147,7 @@ class GDB():
             msg = self.stop_responses.get(block=True, timeout=timeout)
         except queue.Empty:
             return ('timed out', None)
+        log.info(msg)
         return msg
 
     # All of the following functions in this class provide python functions
@@ -138,7 +164,7 @@ class GDB():
         self.send('-target-disconnect')
 
     def continue_execution(self, retries: int = 3) -> None:
-        gdb_response = self.send('-exec-continue --all')
+        gdb_response = self.send('-exec-continue --all', wait_notification = True)
         if gdb_response['message'] == 'error':
             # Occurs e.g. if the program is not running currently.
             if retries == 0:
@@ -151,25 +177,16 @@ class GDB():
                     f'{gdb_response["payload"]["msg"]}.\n'
                     f'Trying continue_execution() again in 0.5 seconds'
                 )
-                time.sleep(0.5)
+                time.sleep(0.2)
                 self.continue_execution(retries - 1)
         else:
-            pass
-            time.sleep(0.5)
-            #todo add notification for running
-            #stop_reason, stop_info = self.wait_for_stop()
-            #log.info(stop_reason)
+            time.sleep(0.1)
+            return
 
 
     #wait till receive notification
     def interrupt(self) -> None:
-        self.send('-exec-interrupt --all')
-        time.sleep(0.5)
-        stop_reason, stop_info = self.wait_for_stop()
-        if stop_reason == 'interrupted':
-            return
-        else:
-            log.error(stop_info)
+        self.send('-exec-interrupt --all',  wait_notification = True)
 
     def set_breakpoint(self, address: int, is_hardware_bp: bool = True) -> str:
         """Returns the ID that GDB gave to the breakpoint."""
@@ -282,10 +299,13 @@ class GDBCommunicator(mp.Process):
             # information from them, and pass the back to the GDB Python class
             # instance via one of the queues.
             for response in responses:
-                log.info(f'received: {response}')
+                #log.debug(f'received: {response}')
                 if 'token' in response and response['token'] is not None:
                     response['console_data'] = self.console_messages
                     self.console_messages = []
+                    self.request_responses.put(response)
+                # for now, only add notify of interrupt and continue to request_responses
+                elif 'type' in response and response['type'] == 'notify' and response['message'] in ('running', 'stopped'):
                     self.request_responses.put(response)
                 elif 'type' in response and response['type'] == 'console':
                     self.console_messages.append(response)
@@ -349,7 +369,9 @@ class GDBCommunicator(mp.Process):
             self.stop_responses.put(
                 ('communication error', response['payload'])
             )
-        #add this branch because we want to interrupt execution and probe memory
+
+        # to receive notification of interrupt
+        # Add this branch because we want to interrupt execution and probe memory
         elif (
                 response['type'] == 'notify' and
                 response['message'] == 'stopped' and
@@ -357,10 +379,21 @@ class GDBCommunicator(mp.Process):
                 'signal-meaning' in response['payload'] and
                 response['payload']['signal-meaning'] == 'Trace/breakpoint trap'
         ):
-            log.info('received notify for interrupt')
-            log.info(response)
+            log.debug('received notify for interrupt')
+            log.debug(response)
             self.stop_responses.put(
-                ('interrupted', str(response['payload']))
+                ('notify_interrupted', str(response['payload']))
+            )
+
+        # similarly, receive notification for continue
+        elif (
+                response['type'] == 'notify' and
+                response['message'] == 'running'
+        ):
+            log.debug('received notify for continue')
+            log.debug(response)
+            self.stop_responses.put(
+                ('notify_running', str(response['payload']))
             )
 
         elif (

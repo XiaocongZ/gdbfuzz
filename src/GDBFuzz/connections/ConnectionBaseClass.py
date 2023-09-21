@@ -39,12 +39,12 @@ class ConnectionBaseClass(mp.Process):
         self.reset_sut_function = reset_sut
 
 
-    def start(self): 
+    def start(self):
         try:
             self.connect(self.SUTConnection_config)
         except Exception as e:
             log.warning(e)
-            
+
         super().start()
         # Give connection some time to start
         time.sleep(1)
@@ -52,14 +52,15 @@ class ConnectionBaseClass(mp.Process):
     def run(self) -> None:
         signal.signal(signal.SIGUSR1, self.on_exit)
 
-        # Parts of the connect process might need to be done within the subprocess, 
+        # Parts of the connect process might need to be done within the subprocess,
         # because the connection requires the target to run.
         # This is done to handle connection issues easier,
-        # Since only a new connection process needs to be started therefore 
+        # Since only a new connection process needs to be started therefore
         self.connect_async()
 
 
         while True:
+
             self.wait_for_input_request()
             self.stop_responses.put(('input request', ''))
 
@@ -76,11 +77,11 @@ class ConnectionBaseClass(mp.Process):
     def connect(self, SUTConnection_config: configparser.SectionProxy) -> None:
         """[Optional] Establish connection to SUT while it is halted"""
         ...
-        
+
     def connect_async(self) -> None:
         """[Optional] Establish connection to SUT asynchronously, while it is executed further"""
         ...
-        
+
     @abstractmethod
     def send_input(self, fuzz_input: bytes) -> None:
         """Sends 'fuzz_input' to SUT"""

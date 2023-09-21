@@ -59,7 +59,7 @@ class SUTInstance:
 
     def reset(self):
         # Reset target
-        self.gdb.send('delete breakpoints')
+        #self.gdb.send('delete breakpoints')
         self.gdb.send('monitor reset halt')
         self.gdb.send('flushregs')
 
@@ -97,10 +97,6 @@ class SUTInstance:
                 )
 
                 gdb.connect()
-
-                stop_reason, stop_info = gdb.wait_for_stop(timeout=30)
-                assert stop_reason == 'stopped, no reason given', \
-                    f'{stop_reason=} {stop_info=}'
 
                 return gdb
             except Exception as e:
