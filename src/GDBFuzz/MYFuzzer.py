@@ -366,6 +366,7 @@ class GDBFuzzer:
         log.info(previous_loop_input)
         if not hash in self.hash_record:
             self.hash_record[hash] = None
+            #todo modify
             self.input_gen.add_corpus_entry(previous_loop_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
             log.info("new hash")
         else:

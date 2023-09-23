@@ -59,7 +59,6 @@ class SUTInstance:
 
     def reset(self):
         # Reset target
-        #self.gdb.send('delete breakpoints')
         self.gdb.send('monitor reset halt')
         self.gdb.send('flushregs')
 
