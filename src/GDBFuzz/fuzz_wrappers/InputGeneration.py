@@ -77,7 +77,6 @@ class CorpusEntry:
             content = content[gross_length:]
 
         self.len = len(self.contents)
-        log.info(self.contents)
 
     @staticmethod
     def static_pack_contents(input: list[bytes]) -> bytes:
@@ -149,8 +148,10 @@ class InputGeneration:
         # Setup stared libfuzzer object.
         _pylibfuzzer.initialize(max_input_length)
 
-        self.current_input = None
+        self.inputs_to_switch_baseline = 0
         self.choose_new_baseline_input()
+        self.current_input = None
+        self.next_index = 0
 
     def add_seeds(self, seeds_directory: str) -> None:
         """Add each seed in seeds_directory to the corpus.
@@ -200,7 +201,8 @@ class InputGeneration:
         return entry
 
     def choose_new_baseline_input(self):
-        self.inputs_to_switch_baseline = 50
+        log.info('new baseline')
+        self.inputs_to_switch_baseline = 30
         energy_sum = 0
         cum_energy = []
         for i in self.corpus:
@@ -216,20 +218,31 @@ class InputGeneration:
         if chosen_entry.burn_in:
             chosen_entry.burn_in -= 1
 
+    def choose_new_mutated_input(self) -> None:
+        #for now, switch baseline after 30 inputs
+        self.inputs_to_switch_baseline -= 1
+        if self.inputs_to_switch_baseline <= 0:
+            self.choose_new_baseline_input()
+
+        generated_inp = self.corpus[self.current_base_input_index].contents
+        generated_inp = list( map(lambda x: _pylibfuzzer.mutate(x), generated_inp) )
+
+        self.current_input = generated_inp
+        self.next_index = 0
+
+
+    def get_next_input(self) -> Tuple[bytes, bool]:
+        i = self.next_index
+        if i < 0 or i > len(self.current_input):
+            raise Exception('invalid index')
+        self.next_index += 1
+        if i == len(self.current_input):
+            return None, True # current input depleted, notify fuzzer to probe memory
+        else:
+            return self.current_input[i], False
+
     def get_baseline_input(self) -> list[bytes]:
         return self.corpus[self.current_base_input_index].contents
 
     def get_current_input(self) -> list[bytes]:
         return self.current_input
-
-    def generate_input(self) -> bytes:
-        #for now, switch baseline after 50 inputs
-        self.inputs_to_switch_baseline -= 1
-        if self.inputs_to_switch_baseline == 0:
-            log.info('choose_new_baseline_input')
-            self.choose_new_baseline_input()
-
-        generated_inp = self.corpus[self.current_base_input_index].contents
-        generated_inp = map(lambda x: _pylibfuzzer.mutate(x), generated_inp)
-        self.current_input = generated_inp
-        return generated_inp

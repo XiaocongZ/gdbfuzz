@@ -88,7 +88,7 @@ class GDB():
         message_id = self.generate_message_id()
         message = str(message_id) + message
         self.requests.put(message)
-        log.debug(message)
+        log.debug(message, stack_info = True)
 
         timeout_time = time.time() + timeout
         response = None

@@ -67,8 +67,8 @@ class GDBFuzzer:
         self.init_fuzzer_stats(config_file_path)
         self.init_components(config)
         self.init_memory_regions(config)
-        self.hash_record = dict()
 
+        self.hash_record = dict()
 
         self.crashes_directory = os.path.join(
             self.output_directory,
@@ -147,8 +147,16 @@ class GDBFuzzer:
             single_run_timeout: int,
             stop_time: int
     ):
+        self.input_gen.choose_new_mutated_input()
+        self.fuzzer_stats.runs += 1
+
         stop_reason, stop_info = None, None
         while stop_time >= int(time.time()):
+
+            # Update fuzzer stats every minute
+            if int(time.time()) > (self.last_stat_update + 60):
+                self.write_fuzzer_stats()
+
             if stop_reason != 'input request':
                 sut.gdb.continue_execution()
 
@@ -159,10 +167,9 @@ class GDBFuzzer:
             log.info(f"stop reason: {stop_reason}")
 
             if stop_reason == 'input request':
-                current_input \
-                    = self.on_input_request(
-                        sut
-                    )
+                probed = self.on_input_request(sut)
+                if probed:
+                    return []
 
             elif stop_reason == 'breakpoint hit':
                 log.error("unimplemented")
@@ -286,25 +293,20 @@ class GDBFuzzer:
     def on_input_request(
             self,
             sut: SUTInstance
-    ) -> tuple[bytes, bytes, int]:
-        """
-        This function can update the baseline_input.
-        """
+    ) -> bool:
 
-        self.fuzzer_stats.runs += 1
-        if int(time.time()) > (self.last_stat_update + 60):
-            # Update fuzzer stats every minute
-            self.write_fuzzer_stats()
-
-        #probing memory regions
-        sut.gdb.interrupt()
-        self.probe(sut.gdb)
-        sut.gdb.continue_execution()
-        SUT_input = self.input_gen.generate_input()
+        SUT_input, is_depleted = self.input_gen.get_next_input()
         log.info(SUT_input)
-        sut.SUT_connection.send_input(SUT_input)
-
-        return SUT_input
+        if is_depleted:
+            log.info('probe')
+            #probing memory regions
+            sut.gdb.interrupt()
+            self.probe(sut.gdb)
+            sut.gdb.continue_execution()
+            return True
+        else:
+            sut.SUT_connection.send_input(SUT_input)
+            return False
 
     def write_fuzzer_stats(self) -> None:
         self.last_stat_update = int(
@@ -360,14 +362,13 @@ class GDBFuzzer:
         hash = self.compute_hash(bytes.fromhex(mem))
         log.info(hash)
         #hashing and recording
-        previous_loop_input = self.input_gen.get_current_input()
-        if previous_loop_input == None:
-            return ''
-        log.info(previous_loop_input)
+        current_input = self.input_gen.get_current_input()
+        log.info(current_input)
         if not hash in self.hash_record:
             self.hash_record[hash] = None
             #todo modify
-            self.input_gen.add_corpus_entry(previous_loop_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
+            packed_content = CorpusEntry.static_pack_contents(current_input)
+            self.input_gen.add_corpus_entry(packed_content, int(time.time()) - self.fuzzer_stats.start_time_epoch)
             log.info("new hash")
         else:
             log.info("repeated hash")
