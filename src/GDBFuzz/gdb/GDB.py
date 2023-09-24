@@ -69,15 +69,17 @@ class GDB():
             # After the user defined disconnect function returns,
             # GDBCommunicator exits.
             os.kill(self.gdb_communicator.pid, signal.SIGUSR1)
-            self.gdb_communicator.join(timeout=10)
+            self.gdb_communicator.join(timeout=999)
 
             exitcode = self.gdb_communicator.exitcode
+
             if exitcode != 0:
                 #Force killing GDB processes
                 if self.gdb_communicator.gdbmi and self.gdb_communicator.gdbmi.gdb_process:
                     os.kill(self.gdb_communicator.gdbmi.gdb_process.pid, signal.SIGKILL)
+
                 os.kill(self.gdb_communicator.pid, signal.SIGKILL)
-                time.sleep(5)
+
                 raise Exception(f'gdb_manger process exited with {exitcode=}.')
 
     def send(self, message: str, timeout: int = 10, wait_notification = False) -> dict[str, Any]:
@@ -313,19 +315,23 @@ class GDBCommunicator(mp.Process):
                     self.on_stop_response(response)
 
     def on_exit(self, signum: Any, frame: Any) -> None:
+        # use wait instead of communicate here to wait for gdb controller to exit
         self.running = False
-        self.gdbmi.exit()
+        #self.gdbmi.exit()
         process = self.gdbmi.gdb_process
+
         if process:
             try:
 
                 process.terminate()
-                process.communicate(timeout=5)
-            except TimeoutError as e:
+                process.wait()
+                #process.communicate(timeout=0.5)
+            #except TimeoutError as e:
+            except Exception as e:
                 log.warning(f"Timeout error on stopping GDB: {e}")
                 os.kill(process.pid, signal.SIGKILL)
 
-        #exit(0)
+        exit(0)
 
     def on_stop_response(self, response: dict[str, Any]) -> None:
         """Parse 'response', if the response specifies that the SUT has
