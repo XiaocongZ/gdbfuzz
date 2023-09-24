@@ -30,9 +30,6 @@ import attr
 import ast
 import hashlib
 
-from GDBFuzz import graph
-from GDBFuzz import util
-
 from GDBFuzz.fuzz_wrappers.InputGeneration import CorpusEntry, InputGeneration
 ###
 from GDBFuzz.MYFuzzerStats import FuzzerStats
@@ -41,7 +38,6 @@ from GDBFuzz.modes.QEMUInstance import QEMUInstance
 from GDBFuzz.modes.SUTInstance import SUTInstance
 from GDBFuzz.modes.SUTRunsOnHostInstance import SUTRunsOnHostInstance
 from GDBFuzz.SUTException import SUTException
-from GDBFuzz.visualization.Visualizations import Visualizations
 
 
 class GDBFuzzer:
@@ -89,17 +85,6 @@ class GDBFuzzer:
         self.write_fuzzer_stats()
 
     def init_components(self, config: ConfigParser) -> None:
-        #TODO visualization
-        self.visualizations: Visualizations | None = None
-        if config['LogsAndVisualizations'].getboolean('enable_UI'):
-            self.visualizations = Visualizations(
-                self.fuzzer_stats,
-                self.output_directory,
-                self.ghidra.CFG()
-            )
-            self.visualizations.daemon = True
-            self.visualizations.start()
-
         seeds_directory: str | None = config['Fuzzer']['seeds_directory']
         if seeds_directory == '':
             seeds_directory = None
@@ -109,7 +94,6 @@ class GDBFuzzer:
             config['Fuzzer'].getint('maximum_input_length')
         )
 
-    #TODO
     def init_SUT(self, config: ConfigParser) -> SUTInstance:
         if config['SUT']['target_mode'] == 'Hardware':
             return SUTInstance(config)
@@ -263,6 +247,10 @@ class GDBFuzzer:
             # wait for 1 second for target system to stop.
             #time.sleep(1)
 
+            # zxc:
+            # interrupt and continue is modified to wait for notify message
+            # We can wait for notify message, however notify for continue doesn't seem to work
+
             response = gdb.send('-stack-list-frames')
             for frame in response['payload']['stack']:
                 stacktrace += str(frame['addr']) + ' '
@@ -331,16 +319,6 @@ class GDBFuzzer:
                 attr.asdict(self.fuzzer_stats),
                 indent=4
             ))
-
-    def write_coverage_data(self, address: int) -> None:
-        runtime = int(time.time()) - self.fuzzer_stats.start_time_epoch
-
-        stats_file_path = os.path.join(
-            self.output_directory,
-            'plot_data'
-        )
-        with open(stats_file_path, 'a') as f:
-            f.write(f'{runtime} {hex(address)}\n')
 
     def probe(self, gdb: GDB) -> str:
         #msp_num = gdb.register_name_to_number("$msp")
