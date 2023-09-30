@@ -47,37 +47,14 @@ class SUTInstance:
 
         self.stop_responses: mp.Queue[tuple[str, Any]] = mp.Queue()
 
-        # Some GDB Server implementations (especially ESP32) do not report hit breakpoints
-        # correctly in the GDB response. With the ESP32 GDB server, for instance,
-        # the real hit breakpoint is reported in a seperate message and the current PC
-        # of the first CPU core is reported via the standard  GDB response.
-        # Therefore this queue is introduced as a workaround
-        self.aditional_hit_addresses: mp.Queue[int] = mp.Queue()
         self.gdb: GDB = self.init_gdb(config)
 
         self.SUT_connection = self.init_SUT_connection(config)
 
     def reset(self):
         # Reset target
-        self.gdb.send('monitor reset halt')
+        self.gdb.send('monitor reset hold')
         self.gdb.send('flushregs')
-
-
-    def parse_software_breakpoint(self, config: ConfigParser) -> list[int]:
-        """User configuration can include the addresses where software
-        breakpoints are set. Return these addresses. These software
-        breakpoints are set at error handling code.
-        """
-
-        software_breakpoint_addresses: list[int] = []
-        sw_bps = config['SUT']['software_breakpoint_addresses'].split()
-        for sw_bp in sw_bps:
-            if sw_bp.isdigit():
-                software_breakpoint_addresses.append(int(sw_bp))
-            else:
-                # Assume sw_bp is a hexstring, raise Exception if not.
-                software_breakpoint_addresses.append(int(sw_bp, 16))
-        return software_breakpoint_addresses
 
     # Subclasses may override init_gdb
     def init_gdb(self, config: ConfigParser) -> GDB:
@@ -88,8 +65,6 @@ class SUTInstance:
             try:
                 gdb = GDB(
                     self.stop_responses,
-                    self.aditional_hit_addresses,
-                    self.parse_software_breakpoint(config),
                     config['SUT']['consider_sw_breakpoint_as_error'] == 'True',
                     config['GDB']['path_to_gdb'],
                     config['GDB']['gdb_server_address']
@@ -113,13 +88,6 @@ class SUTInstance:
             config['SUTConnection'],
             self.reset
         )
-
-    def get_additional_hit_bbs(self) -> list[int]:
-        ret: list[int] = []
-        while self.aditional_hit_addresses.qsize() > 0:
-            ret.append(self.aditional_hit_addresses.get())
-
-        return ret
 
     def __enter__(self) -> SUTInstance:
         return self

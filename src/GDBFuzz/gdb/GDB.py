@@ -36,8 +36,6 @@ class GDB():
     def __init__(
             self,
             stop_responses: mp.Queue[tuple[str, Any]],
-            aditional_hit_addresses: mp.Queue[int],
-            software_breakpoint_addresses: list[int],
             consider_sw_breakpoint_as_error: bool,
             gdb_path: str,
             gdb_server_address: str,
@@ -53,10 +51,8 @@ class GDB():
         self.request_responses: mp.Queue[dict[str, Any]] = mp.Queue()
         self.gdb_communicator = GDBCommunicator(
             self.stop_responses,
-            aditional_hit_addresses,
             self.requests,
             self.request_responses,
-            software_breakpoint_addresses,
             consider_sw_breakpoint_as_error,
             gdb_path
         )
@@ -116,7 +112,7 @@ class GDB():
             else:
                 # Skip responses that are from previous sync requests that timed
                 # out, check next response.
-                log.error('GDB A previous req flushed', response)
+                log.error(f'GDB A previous req flushed {response}')
 
         # get notify message
         while True:
@@ -149,7 +145,7 @@ class GDB():
             msg = self.stop_responses.get(block=True, timeout=timeout)
         except queue.Empty:
             return ('timed out', None)
-        log.info(msg)
+        log.debug(msg)
         return msg
 
     # All of the following functions in this class provide python functions
@@ -253,18 +249,14 @@ class GDBCommunicator(mp.Process):
     def __init__(
             self,
             stop_responses: mp.Queue[tuple[str, Any]],
-            aditional_hit_addresses: mp.Queue[int],
             requests: mp.Queue[str],
             request_responses: mp.Queue[dict[str, Any]],
-            software_breakpoint_addresses: list[int],
             consider_sw_breakpoint_as_error: bool,
             gdb_path: str
     ) -> None:
         super().__init__()
-        self.software_breakpoint_addresses = software_breakpoint_addresses
         self.consider_sw_breakpoint_as_error = consider_sw_breakpoint_as_error
         self.stop_responses = stop_responses
-        self.aditional_hit_addresses = aditional_hit_addresses
         self.requests = requests
         self.request_responses = request_responses
         self.gdbmi = GdbController(
@@ -415,7 +407,7 @@ class GDBCommunicator(mp.Process):
             # With QEMU, 'signal-meaning' is 'Interrupt', on stlink it is
             # 'trace/breakpoint trap'.
             pc = int(response['payload']['frame']['addr'], 16)
-            if pc in self.software_breakpoint_addresses or self.consider_sw_breakpoint_as_error:
+            if self.consider_sw_breakpoint_as_error:
                 # Software breakpoint that is set at error handling code
                 # was hit.
                 # gdb-multiarch does emit this response code on a normal interrupt request, as well :(
@@ -463,5 +455,5 @@ class GDBCommunicator(mp.Process):
                 if key_val[0] == 'PC':
                     # We push hit addresses to the seperate Queue to avoid having
                     # multiple stop responses for a single interruption
-                    self.aditional_hit_addresses.put(int(key_val[1], 16))
+
                     log.debug(f"PC at {key_val[1]}")

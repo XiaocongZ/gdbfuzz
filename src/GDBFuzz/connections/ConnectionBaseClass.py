@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import configparser
 import multiprocessing as mp
+import queue
 import signal
 import logging as log
 import time
 from abc import abstractmethod
 from typing import Any
+import asyncio
 
 
 class ConnectionBaseClass(mp.Process):
@@ -49,26 +51,48 @@ class ConnectionBaseClass(mp.Process):
         # Give connection some time to start
         time.sleep(1)
 
+    async def task_recv(self) -> None:
+        while True:
+            await asyncio.sleep(0.01)
+            if self.wait_for_input_request(False):
+                log.debug("serial input acquired")
+                self.stop_responses.put(('input request', ''))
+
+    async def task_send(self) -> None:
+        while True:
+            await asyncio.sleep(0.01)
+            try:
+                fuzz_input = self.inputs.get(block=False)
+                self.send_input(fuzz_input)
+            #todo which Exception
+            except queue.Empty as e:
+                pass
+
+
+    async def recv_send(self) -> None:
+        task1 = asyncio.create_task(self.task_recv())
+        task2 = asyncio.create_task(self.task_send())
+        await asyncio.gather(task1, task2)
+
     def run(self) -> None:
         signal.signal(signal.SIGUSR1, self.on_exit)
-
+        signal.signal(signal.SIGUSR2, self.on_reset)
         # Parts of the connect process might need to be done within the subprocess,
         # because the connection requires the target to run.
         # This is done to handle connection issues easier,
         # Since only a new connection process needs to be started therefore
         self.connect_async()
+        asyncio.run(self.recv_send())
 
-
-        while True:
-
-            self.wait_for_input_request()
-            self.stop_responses.put(('input request', ''))
-
-            fuzz_input = self.inputs.get(block=True)
-            self.send_input(fuzz_input)
 
     def reset_sut(self):
         self.reset_sut_function()
+
+    def on_reset(self, signum: Any, frame: Any) -> None:
+        log.info("signal reset")
+        self.disconnect()
+        self.connect(self.SUTConnection_config)
+        log.info("signal reset end")
 
     def on_exit(self, signum: Any, frame: Any) -> None:
         self.disconnect()

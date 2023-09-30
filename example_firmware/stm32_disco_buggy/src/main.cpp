@@ -26,7 +26,7 @@ char *buf = 0;
 char buf_same_prefix[10];
 size_t input_len = 0;
 int led_state = 0;
-int count = 0;
+uint count = 0;
 
 #define FUZZ_INPUT_SIZE 2048
 
@@ -83,6 +83,7 @@ void process_data(char* buffer, unsigned int length) {
 }
 
 void loop() {
+    count++;
     if (led_state == 0) {
         digitalWrite(LED_BUILTIN, HIGH);
         led_state = 1;

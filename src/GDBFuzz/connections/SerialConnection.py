@@ -39,8 +39,15 @@ class SerialConnection(ConnectionBaseClass):
         log.info(f'Established connection with SUT via Serial at port '
                  f'{self.serial.name}')
 
-    def wait_for_input_request(self) -> None:
+    def wait_for_input_request(self, block=True) -> None:
         # SUT sends 'A' whenever it requests and input
+        if block == False:
+            read = self.serial.read_all()
+            if read and read[-1] == 65:
+                return True
+            else:
+                return False
+        
         log_blank = True
         read = ''
         while not read or read[-1] != 65:
@@ -50,6 +57,7 @@ class SerialConnection(ConnectionBaseClass):
             if not read:
                 log_blank = False
         log.debug(f'READ With Match: {read}')
+        return True
 
     def send_input(self, fuzz_input: bytes) -> None:
         # First send length

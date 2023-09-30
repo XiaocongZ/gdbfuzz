@@ -29,6 +29,7 @@ from typing import Any
 import attr
 import ast
 import hashlib
+import signal
 
 from GDBFuzz.fuzz_wrappers.InputGeneration import CorpusEntry, InputGeneration
 ###
@@ -112,6 +113,7 @@ class GDBFuzzer:
 
         while stop_time >= int(time.time()):
             with self.init_SUT(config) as sut:
+                log.info("a new sut")
                 self.start_fuzzing(
                     sut,
                     single_run_timeout,
@@ -153,7 +155,11 @@ class GDBFuzzer:
             if stop_reason == 'input request':
                 probed = self.on_input_request(sut)
                 if probed:
-                    return []
+                    # reset and continue fuzzing
+                    sut.reset()
+                    stop_reason = 'reset' # to continue in next loop
+                    self.fuzzer_stats.runs += 1
+
 
             elif stop_reason == 'breakpoint hit':
                 log.error("unimplemented")
@@ -282,15 +288,14 @@ class GDBFuzzer:
             self,
             sut: SUTInstance
     ) -> bool:
-
         SUT_input, is_depleted = self.input_gen.get_next_input()
-        log.info(SUT_input)
+
         if is_depleted:
-            log.info('probe')
+            log.debug("probe memory")
             #probing memory regions
             sut.gdb.interrupt()
             self.probe(sut.gdb)
-            sut.gdb.continue_execution()
+            self.input_gen.choose_new_mutated_input()
             return True
         else:
             sut.SUT_connection.send_input(SUT_input)
@@ -327,7 +332,10 @@ class GDBFuzzer:
         #sp = gdb.read_register(13)
         #stack_mem = gdb.read_memory(sp, self.stack_base_addr - sp)
 
-        regions_to_probe = ['buf_same_prefix']
+        #count = gdb.read_memory( 0x2000026c, 4)
+        #log.info(f'count: {count}')
+
+        regions_to_probe = ['.data', '.bss']
         mem = ''
         for region in self.memory_regions:
             if region[0] in regions_to_probe:
@@ -336,7 +344,8 @@ class GDBFuzzer:
                 #time.sleep(0.2)
 
         #mem = mem + stack_mem
-        log.info(mem)
+
+        log.info(f'memory probed {mem}')
         hash = self.compute_hash(bytes.fromhex(mem))
         log.info(hash)
         #hashing and recording

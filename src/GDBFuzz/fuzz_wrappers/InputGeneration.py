@@ -229,6 +229,7 @@ class InputGeneration:
 
         self.current_input = generated_inp
         self.next_index = 0
+        log.info(self.current_input)
 
 
     def get_next_input(self) -> Tuple[bytes, bool]:
