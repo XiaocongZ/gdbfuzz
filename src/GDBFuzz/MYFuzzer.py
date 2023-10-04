@@ -158,6 +158,7 @@ class GDBFuzzer:
                     # reset and continue fuzzing
                     sut.reset()
                     stop_reason = 'reset' # to continue in next loop
+                    self.input_gen.choose_new_mutated_input()
                     self.fuzzer_stats.runs += 1
 
 
@@ -295,7 +296,7 @@ class GDBFuzzer:
             #probing memory regions
             sut.gdb.interrupt()
             self.probe(sut.gdb)
-            self.input_gen.choose_new_mutated_input()
+
             return True
         else:
             sut.SUT_connection.send_input(SUT_input)
@@ -335,13 +336,14 @@ class GDBFuzzer:
         #count = gdb.read_memory( 0x2000026c, 4)
         #log.info(f'count: {count}')
 
-        regions_to_probe = ['.data', '.bss']
+        regions_to_probe = ['GPIO', '.data', '.bss']
         mem = ''
         for region in self.memory_regions:
             if region[0] in regions_to_probe:
+                log.info(region[0])
                 region_mem = gdb.read_memory(region[1], region[2])
                 mem += region_mem
-                #time.sleep(0.2)
+                
 
         #mem = mem + stack_mem
 
@@ -354,8 +356,7 @@ class GDBFuzzer:
         if not hash in self.hash_record:
             self.hash_record[hash] = None
             #todo modify
-            packed_content = CorpusEntry.static_pack_contents(current_input)
-            self.input_gen.add_corpus_entry(packed_content, int(time.time()) - self.fuzzer_stats.start_time_epoch)
+            self.input_gen.report_new_hash(current_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
             log.info("new hash")
         else:
             log.info("repeated hash")

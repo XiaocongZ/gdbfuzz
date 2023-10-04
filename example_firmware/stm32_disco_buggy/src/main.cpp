@@ -23,16 +23,26 @@
 
 
 char *buf = 0;
-char buf_same_prefix[10];
+char buf_same_prefix[15];
 size_t input_len = 0;
 int led_state = 0;
 uint count = 0;
 
 #define FUZZ_INPUT_SIZE 2048
 
+void toggle_led() {
+    if (led_state == 0) {
+        digitalWrite(LED_BUILTIN, HIGH);
+        led_state = 1;
+    } else {
+        digitalWrite(LED_BUILTIN, LOW);
+        led_state = 0;
+    }
+}
+
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED_BUILTIN, LOW);
     Serial.begin(38400);
 
     buf = (char*)calloc(1, FUZZ_INPUT_SIZE);
@@ -56,41 +66,35 @@ void serial_read_bytes(char *buf, size_t length) {
 
 void process_data(char* buffer, unsigned int length) {
 	char stack_array[20];
-    char match_string[] = "bug!1234";
+    char match_string[] = "bufferoverflow!";
     bool match = true;
-    for (int i = 0; i < 8; i++){
+
+    if (buffer[0]=='h' && buffer[1]=='i') {
+        toggle_led();
+    }
+
+
+    for (int i = 0; i < 15; i++){
         if (match == true && length > i && buffer[i] == match_string[i]){
             buf_same_prefix[i] = buffer[i];
         }
         else{
+            //store matched prefix, without resetting buf_same_prefix[]
             match = false;
-            buf_same_prefix[i] = 0;
+            return;
+            //buf_same_prefix[i] = 0;
         }
     }
-    /*
-	if( length > 0 && buffer[0] == 'b')
-		if( length > 1 && buffer[1] == 'u')
-			if( length > 2 && buffer[2] == 'g')
-				if( length > 3 && buffer[3] == '!')
-                    if( length > 4 && buffer[4] == '1')
-                        if( length > 5 && buffer[5] == '2')
-                            if( length > 6 && buffer[6] == '3')
-                                if( length > 7 && buffer[7] == '4'){
-                					memcpy(stack_array, buffer, length);
-                                    Serial.write(stack_array[3]);
-                				}
-    */
+    if (match) {
+        memcpy(stack_array, buffer, length);
+        Serial.write(stack_array[14]);
+    }
+
 }
 
 void loop() {
     count++;
-    if (led_state == 0) {
-        digitalWrite(LED_BUILTIN, HIGH);
-        led_state = 1;
-    } else {
-        digitalWrite(LED_BUILTIN, LOW);
-        led_state = 0;
-    }
+    //toggle_led();
 
     // Notify that we request a new input
     Serial.write('A');

@@ -151,7 +151,9 @@ class InputGeneration:
         self.inputs_to_switch_baseline = 0
         self.choose_new_baseline_input()
         self.current_input = None
-        self.next_index = 0
+        self.next_index = 0 #next input index in the sequnce for this execution
+        self.use_seed = True # Are we using seed itself? if so, don't add duplicates.
+        self.use_seed_index = 0
 
     def add_seeds(self, seeds_directory: str) -> None:
         """Add each seed in seeds_directory to the corpus.
@@ -219,7 +221,15 @@ class InputGeneration:
             chosen_entry.burn_in -= 1
 
     def choose_new_mutated_input(self) -> None:
-        #for now, switch baseline after 30 inputs
+        # Use seed at start
+        if self.use_seed and self.use_seed_index < len(self.corpus):
+            self.current_input = self.corpus[self.use_seed_index].contents
+            self.use_seed_index += 1
+            if self.use_seed_index == len(self.corpus):
+                self.use_seed = False
+            return
+
+        # For now, switch baseline after 30 inputs
         self.inputs_to_switch_baseline -= 1
         if self.inputs_to_switch_baseline <= 0:
             self.choose_new_baseline_input()
@@ -247,3 +257,10 @@ class InputGeneration:
 
     def get_current_input(self) -> list[bytes]:
         return self.current_input
+
+    def report_new_hash(self, current_input, time):
+        if self.use_seed:
+            return
+        else:
+            packed_content = CorpusEntry.static_pack_contents(current_input)
+            self.add_corpus_entry(packed_content, time)
