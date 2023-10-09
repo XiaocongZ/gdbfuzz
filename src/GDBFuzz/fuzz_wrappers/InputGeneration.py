@@ -43,6 +43,7 @@ class CorpusEntry:
     num_childs: int = 0
     weight: float = 1
     burn_in: int = 5
+    is_seed: bool = False
 
 
     def compute_weight(self, total_corpus_entries: int):
@@ -134,17 +135,9 @@ class InputGeneration:
         self.retry_corpus_input_index: int = -1
 
 
-        if seeds_directory:
-            self.add_seeds(seeds_directory)
 
-        if len(self.corpus) == 0:
-            # No seeds were specified or all seeds in seeds_directory are too
-            # large
+        self.add_seeds(seeds_directory)
 
-            default_contents = [b'hi', b'hello_world', b'123456']
-            default_content = CorpusEntry.static_pack_contents(default_contents)
-            self.add_corpus_entry(default_content, 0)
-            log.info(default_content)
         # Setup stared libfuzzer object.
         _pylibfuzzer.initialize(max_input_length)
 
@@ -156,6 +149,15 @@ class InputGeneration:
         self.use_seed_index = 0
 
     def add_seeds(self, seeds_directory: str) -> None:
+        if seeds_directory == None:
+            # No seeds were specified or all seeds in seeds_directory are too
+            # large
+            #todo configure length
+            default_contents = [b'bug!']*64
+            default_content = CorpusEntry.static_pack_contents(default_contents)
+            self.add_corpus_entry(default_content, 0, is_seed=True)
+            log.info(default_content)
+            return
         """Add each seed in seeds_directory to the corpus.
 
         Inputs larger than self.max_input_length are not added.
@@ -176,10 +178,10 @@ class InputGeneration:
                 log.debug(f'Seed {filepath=} added.')
 
                 if content not in self.corpus:
-                    self.add_corpus_entry(content, 0)
+                    self.add_corpus_entry(content, 0, is_seed=True)
 
     # input needs to be packed with length, content, newline
-    def add_corpus_entry(self, input: bytes, timestamp:int) -> CorpusEntry:
+    def add_corpus_entry(self, input: bytes, timestamp:int, is_seed=False) -> CorpusEntry:
 
         filepath = os.path.join(
             self.corpus_directory,
@@ -225,10 +227,10 @@ class InputGeneration:
         if self.use_seed and self.use_seed_index < len(self.corpus):
             self.current_input = self.corpus[self.use_seed_index].contents
             self.use_seed_index += 1
-            if self.use_seed_index == len(self.corpus):
-                self.use_seed = False
             return
-
+        elif self.use_seed_index == len(self.corpus):
+            self.use_seed = False
+            #continue mutation
         # For now, switch baseline after 30 inputs
         self.inputs_to_switch_baseline -= 1
         if self.inputs_to_switch_baseline <= 0:
@@ -239,7 +241,6 @@ class InputGeneration:
 
         self.current_input = generated_inp
         self.next_index = 0
-        log.info(self.current_input)
 
 
     def get_next_input(self) -> Tuple[bytes, bool]:
@@ -258,7 +259,7 @@ class InputGeneration:
     def get_current_input(self) -> list[bytes]:
         return self.current_input
 
-    def report_new_hash(self, current_input, time):
+    def report_new_hash(self, current_input, time) -> None:
         if self.use_seed:
             return
         else:

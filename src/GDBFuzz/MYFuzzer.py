@@ -150,7 +150,7 @@ class GDBFuzzer:
                 timeout=single_run_timeout
             )
 
-            log.info(f"stop reason: {stop_reason}")
+            log.debug(f"stop reason: {stop_reason}")
 
             if stop_reason == 'input request':
                 probed = self.on_input_request(sut)
@@ -327,24 +327,18 @@ class GDBFuzzer:
             ))
 
     def probe(self, gdb: GDB) -> str:
-        #msp_num = gdb.register_name_to_number("$msp")
-        #print("msp_num", msp_num)
+
+        mem = ''
+        for region in self.memory_regions:
+            log.info(region[0])
+            region_mem = gdb.read_memory(region[1], region[2])
+            mem += region_mem
 
         #sp = gdb.read_register(13)
         #stack_mem = gdb.read_memory(sp, self.stack_base_addr - sp)
 
         #count = gdb.read_memory( 0x2000026c, 4)
         #log.info(f'count: {count}')
-
-        regions_to_probe = ['GPIO', '.data', '.bss']
-        mem = ''
-        for region in self.memory_regions:
-            if region[0] in regions_to_probe:
-                log.info(region[0])
-                region_mem = gdb.read_memory(region[1], region[2])
-                mem += region_mem
-                
-
         #mem = mem + stack_mem
 
         log.info(f'memory probed {mem}')
@@ -352,12 +346,13 @@ class GDBFuzzer:
         log.info(hash)
         #hashing and recording
         current_input = self.input_gen.get_current_input()
-        log.info(current_input)
+
         if not hash in self.hash_record:
             self.hash_record[hash] = None
             #todo modify
             self.input_gen.report_new_hash(current_input, int(time.time()) - self.fuzzer_stats.start_time_epoch)
             log.info("new hash")
+            log.info(current_input)
         else:
             log.info("repeated hash")
         return hash
