@@ -163,9 +163,6 @@ def main(argv: list[str] | None = None) -> int:
         config['Fuzzer']['seeds_directory']
     )
 
-    # Convert entrypoint to a decimal number.
-    config['SUT']['entrypoint'] = process_entrypoint(config)
-
     log.info(f'Using configfile {args.config}')
 
     GDBFuzzer(config, args.config)

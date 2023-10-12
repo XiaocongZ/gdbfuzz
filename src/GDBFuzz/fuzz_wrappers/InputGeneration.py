@@ -153,7 +153,7 @@ class InputGeneration:
             # No seeds were specified or all seeds in seeds_directory are too
             # large
             #todo configure length
-            default_contents = [b'bug!']*64
+            default_contents = [b'abcdefghijklmnopqrstuvwxyz ']
             default_content = CorpusEntry.static_pack_contents(default_contents)
             self.add_corpus_entry(default_content, 0, is_seed=True)
             log.info(default_content)
